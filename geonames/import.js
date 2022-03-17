@@ -1,17 +1,14 @@
 rampart.globalize(rampart.utils)
 var Sql=require("rampart-sql");
 
-var sql = new Sql.init("./web_server/data/geonames_db", true);
+var sql = new Sql.init(process.scriptPath + "/web_server/data/geonames_db", true);
 
 function create_table() {
-    try {
-        sql.one("drop table geonames");
-        // will get a non fatal error if table doesn't exist
-        if(sql.errMsg == '') {
-            printf("dropped old table for rebuild\n");
-        }
-    } catch(e) {
-        console.log(e);
+
+    sql.one("drop table geonames");
+    // will get a non fatal error if table doesn't exist
+    if(sql.errMsg == '') {
+        printf("dropped old table for rebuild\n");
     }
 
     sql.exec("create table geonames (" +
@@ -34,7 +31,7 @@ function create_table() {
 
 var total=-1;
 
-/* a single function for both pre-processing (progressFunc)
+/* a single function to monitor the import for both pre-processing (progressFunc)
    and import (callback function supplied to sql.importCsvFile as a paramater)   */
 function monitor_import(count, stg) {
     var stage = "Import";
@@ -69,7 +66,7 @@ function import_data() {
             progressStep: 100, //progressfunc run every 100th row for each stage
             delimiter:    '\t',
             singleQuoteNest: false,
-            normalize: false, //postal code appear as numbers and strings - will be converted to string on import
+            normalize: false, //postal code appear as numbers and strings - numbers will be converted to string on import
                               //if this was set true, the strings would be lost, since a majority are numbers.
             progressFunc: monitor_import //progress function while processing csv
         },
@@ -104,9 +101,14 @@ function make_geocode_index() {
 function make_text_index(){
     printf("creating indexes on location names\n");
 
+    // noiselist as detailed at https://rampart.dev/docs/sql-set.html#noiselist
+    // This is not English text and some geographic abbreviations like OR IN DO TO SO and US
+    // are also on the noise words list.
+    sql.set({ noiseList:[]});
+
     sql.exec("create fulltext index geonames_textcols_ftx on geonames"+
-        "(place_name\\postal_code\\admin_name1\\admin_code1\\admin_name2\\admin_code2\\admin_name3\\admin_code3\\country_code)"+
-        " WITH INDEXMETER 'on';");
+        "(place_name\\postal_code\\admin_name1\\admin_code1\\country_code\\admin_name2\\admin_code2\\admin_name3\\admin_code3)"+
+        " WITH WORDEXPRESSIONS ('[\\alnum\\x80-\\xFF]{2,99}') INDEXMETER 'on';");
 }
 
 function make_id_index(){
