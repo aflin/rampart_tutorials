@@ -1,48 +1,17 @@
+// Load the sql module
 var Sql=require("rampart-sql");
+
+// serverConf is defined in web_server/web_server_conf.js
 var sql=new Sql.init(serverConf.dataRoot + '/geonames_db');
 
 var useKilometers=true;
 
-var distvar = "mi"
+var distvar = "mi";
 
 if(useKilometers)
-    distvar = "km"
+    distvar = "km";
 
-//defining page once upon script load.
-var page=`<!DOCTYPE HTML>
-        <html><head><meta charset="utf-8">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.devbridge-autocomplete/1.4.11/jquery.autocomplete.min.js"></script>
-        <style>
-            body,h1,h2,h3,h4,h5,h6 {font-family: "Varela Round", Sans-Serif;}
-            .autocomplete-suggestions { border: 1px solid #999; background: #FFF; overflow: auto; width: auto !important; padding-right:5px;}
-            .autocomplete-suggestion { padding: 2px 5px; white-space: nowrap; overflow: hidden; }
-            .autocomplete-selected { background: #F0F0F0; }
-            .autocomplete-suggestions strong { font-weight: normal; color: #3399FF; }
-            .autocomplete-group { padding: 2px 5px; }
-            .autocomplete-group strong { display: block; border-bottom: 1px solid #000; }
-        </style>
-        <title>City Search Tutorial</title>
-        </head>
-        <body>
-        <div id="main" style="padding-bottom:30px;background-color: white; position: absolute; left:200px; top:0px; min-height: 300px; overflow-x: hidden; padding-right: 20px; padding-left: 30px; box-sizing: border-box; width: 600px;">
-          <form id="mf">
-            <div style="width:100%">
-              <span style="white-space:nowrap;display:block;width:500px;height:39px;position:relative;background-color: white;z-index:10;border-bottom: lightGray 1px solid; padding-top:15px;padding-bottom:15px">
-                <table style="background-color: white; width:100%">
-                  <tr>
-                    <td style="position:relative">
-                      <input type="text" id="cstextbox" name="q" value="" placeholder="Search for a city" style="box-sizing:border-box;min-width:150px;width:100%;height:30px;font:normal 18px arial,sans-serif;padding: 1px 3px;border: 2px solid #ccc;">
-                    </td>
-                  </tr>
-                </table>
-              </span>
-            </div> 
-          </form>
-          <div id="res"></div>
-          </body>
-          <script>
-
+var client_script = `
 // function to get query parameters from url
 function getparams() {
     if (window.location.search.length==0)
@@ -66,15 +35,15 @@ $(document).ready(function(){
 
     // format the results, stick them in the div below the search form
     // update url to match state if curid is set
-    function format_res(res) {
+    function format_res(res_cities) {
         var resdiv = $('#res');
-        var places = Object.keys(res);
+        var places = Object.keys(res_cities);
         var reshtml="<h2>Closest places to " + $('#cstextbox').val() +'</h2>';;
         resdiv.html('');
 
         for (var i=0;i<places.length;i++) {
             var j=0, place=places[i];
-            var placeObj = res[place];
+            var placeObj = res_cities[place];
             var zkeys = Object.keys(placeObj);
             var ziphtml='';
             var is_self=false; //flag if we are processing zip codes in the current city          
@@ -91,15 +60,16 @@ $(document).ready(function(){
                 //console.log(zipObj);
                 ziphtml+='<a class="zip" href="#" data-zip="' + zip + '" data-lat="' + zipObj.lat + '" data-lon="' +
                          zipObj.lon + '" data-id="' + zipObj.id + '">' + zip + '(' + zipObj.dist.toFixed(1) +
-                         ' ' + zipObj.heading + ')</a> ';
+                         '&nbsp;' + zipObj.heading + ')</a> ';
             }
             if(ziphtml) {// skip self if only one zip.
                 if(is_self)
                     reshtml += '<span><h3>Other zip codes in <span class="place">' + place + '</span></h3>'  
                             + ziphtml + "</span>";
                 else
-                    reshtml += '<span><h3><span class="place">' + place + '</span> ('+ parseFloat(placeObj.avgdist).toFixed(1)  +' ${distvar}.)</h3>'  
-                            + ziphtml + "</span>";
+                    reshtml += '<span><h3><span class="place">' + place + '</span> (' +
+                                parseFloat(placeObj.avgdist).toFixed(1)  +' ${distvar}.)</h3>' +
+                                ziphtml + "</span>";
             }
         }
         resdiv.html(reshtml);
@@ -110,7 +80,7 @@ $(document).ready(function(){
         }
     }
 
-    // Use 'body' and filter with class 'zip' so the event will pick up not yet written content
+    // Use 'body' and filter with class 'zip' so the event will pick up not-yet-written content
     $('body').on('click','.zip',function(e) {
         //perform a new search on the zip code that was clicked.
         var t = $(this);
@@ -133,7 +103,7 @@ $(document).ready(function(){
             {lat:lat, lon: lon},
             function(res) {
                 curzip=zip;
-                format_res(res);
+                format_res(res.cities);
             }
         );
         return false; //don't actually go to the href in the clicked <a>
@@ -155,7 +125,7 @@ $(document).ready(function(){
                     function(res) {
                         curzip = sel.zip;
                         curid = sel.id;
-                        format_res(res);
+                        format_res(res.cities);
                     }
                 );
             }
@@ -179,7 +149,7 @@ $(document).ready(function(){
                 curzip = res.zip;
                 $('#cstextbox').val(res.place);
                 //no curid necessary here
-                format_res(res.res);
+                format_res(res.cities);
             }
         );
     }
@@ -201,14 +171,84 @@ $(document).ready(function(){
     };
 
 });
-           </script>
-          </html>`;
+`;
+
+
+// page is defined once upon script load here rather than upon each request in 
+// htmlpage() below.
+var page=`<!DOCTYPE HTML>
+<html>
+    <head><meta charset="utf-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.devbridge-autocomplete/1.4.11/jquery.autocomplete.min.js"></script>
+    <style>
+        body,h1,h2,h3,h4,h5,h6 {font-family: "Varela Round", Sans-Serif;}
+        .autocomplete-suggestions { 
+            border: 1px solid #999; 
+            background: #FFF; 
+            overflow: auto; 
+            width: auto !important; 
+            padding-right:5px;
+        }
+        .autocomplete-suggestion { 
+            padding: 2px 5px; 
+            white-space: nowrap; 
+            overflow: hidden; 
+        }
+        .autocomplete-suggestions strong { 
+            font-weight: normal; 
+            color: #3399FF; 
+        }
+        .autocomplete-group strong { 
+            display: block; 
+            border-bottom: 1px solid #000; 
+        }
+        .autocomplete-selected { background: #F0F0F0; }
+        .autocomplete-group { padding: 2px 5px; }
+        .zip { display: inline-block; width:140px;}
+        #main {
+            background-color: white;
+            margin: auto;
+            min-height: 300px;
+            width: 600px;
+        }
+        #idiv {
+            width:500px;
+            height:39px;
+            border-bottom: lightGray 1px solid;
+            padding:15px 0px 15px 0px;
+        }
+        #cstextbox {
+            min-width:150px;
+            width:100%;
+            height:30px;
+            font:normal 18px arial,sans-serif;
+            padding: 1px 3px;
+            border: 2px solid #ccc;
+            box-sizing: border-box;
+        }
+    </style>
+    <title>City Search Tutorial</title>
+    </head>
+    <body>
+    <div id="main">
+      <form id="mf">
+          <div id="idiv">
+              <input type="text" id="cstextbox" name="q" value="" placeholder="Search for a city">
+          </div>
+      </form>
+      <div id="res"></div>
+      </body>
+      <script>
+          ${client_script}
+      </script>
+</html>`;
 
 
 
 function htmlpage(req) {
     // just return the html.
-    return {html:page}
+    return {html:page};
 }
 
 
@@ -244,7 +284,6 @@ function reorg_places(places) {
             var zkey = zkeys[j];
             avg += placeObj[zkey].dist;
             cnt++;
-//avg = avg + `${zkey}[ = ${placeObj[zkey]}`;
         }
         avg /= cnt;
         placeObj.avgdist=avg;
@@ -271,43 +310,62 @@ function reorg_places(places) {
 }
 
 function ajaxres(req) {
-    var res, res2;
+    var res, id_res;
     var lon = req.params.lon, lat=req.params.lat;
 
     // if we are given an id, look up the lat/lon
     if(req.params.id)
     {
-        res2= sql.one("SELECT " +
+        id_res= sql.one("SELECT " +
             "place_name +', ' + admin_name1 + ', ' + postal_code + ', ' +country_code place, "  +
             "postal_code zip, latitude lat, longitude lon " + 
             "FROM geonames WHERE id=?;",
             [req.params.id]
         );
-        if(res2) {
-            lon=res2.lon;
-            lat=res2.lat;
+        if(id_res) {
+            lon=id_res.lon;
+            lat=id_res.lat;
         }
     }
 
     if(!lon || !lat)
         return {json:{}};
 
-    res = sql.exec("SELECT " +
-        "place_name +', ' + admin_name1 + ', ' + country_code place, "  +
-        "id, postal_code, latitude, longitude, DISTLATLON(?, ?, latitude, longitude) dist, " + 
-        "AZIMUTH2COMPASS( AZIMUTHLATLON(?, ?, latitude, longitude), 3 ) heading " +
-        "FROM geonames WHERE geocode BETWEEN (SELECT LATLON2GEOCODEAREA(?, ?, 1.0)) ORDER BY 6 ASC;",
-        [lat,lon,lat,lon,lat,lon],
+    res = sql.exec(`SELECT
+        place_name +', ' + admin_name1 + ', ' + country_code place,
+        id, postal_code, latitude, longitude, 
+        DISTLATLON(?lat, ?lon, latitude, longitude) dist,
+        AZIMUTH2COMPASS( AZIMUTHLATLON(?lat, ?lon, latitude, longitude), 3 ) heading
+        FROM geonames WHERE 
+        geocode BETWEEN (SELECT LATLON2GEOCODEAREA(?lat, ?lon, 1.0))
+        ORDER BY 6 ASC;`,
+        {lat:lat, lon:lon},
         {maxRows: 100 }
     );
-    var ret = reorg_places(res.rows);
 
+    var ret = {cities: reorg_places(res.rows)};
+
+    // if look up by id, add name and zip for display
     if(req.params.id)
-        ret = {res:ret, place:res2.place, zip:res2.zip}
+    {
+        ret.place = id_res.place;
+        ret.zip = id_res.zip;
+    }
 
     return {json:ret}
 }
 
+/* autocomp() results must be formatted as such:
+{
+    "suggestions": [
+        {"value":"Vaulion, Canton de Vaud, 1325, CH","id":"6233eaf65bd","latitude":46.6848,"longitude":6.3832,"zip":"1325"},
+        {"value":"Vallorbe, Canton de Vaud, 1337, CH","id":"6233eaf65c6","latitude":46.7078,"longitude":6.3714,"zip":"1337"},
+        {"value":"Valeyres-sous-Rances, Canton de Vaud, 1358, CH","id":"6233eaf6608","latitude":46.7482,"longitude":6.5354,"zip":"1358"},
+        {"value":"Valeyres-sous-Ursins, Canton de Vaud, 1412, CH","id":"6233eaf663b","latitude":46.7453,"longitude":6.6533,"zip":"1412"},
+        ...
+    ]
+}
+*/
 function autocomp(req) {
     var res;
     var q = req.query.query;
@@ -322,27 +380,29 @@ function autocomp(req) {
     if(q.length<2)
         return {json: { "suggestions": []}}
 
-    // we will need at least two chars
+    // we will need at least two chars in our last word
+    // since it will get a '*' wildcard added to it
     q = q.replace(/ \S$/, ' ');
     
 
-    // if last character is not a space, add glob    
+    // if last character is not a space, add wildcard
     if(q.charAt(q.length-1) != ' ')
         q += '*';
 
     sql.set({
-        'likepAllmatch': true,  //match every word or partial word
-        'qMaxWords'    : 5000,  //allow query and sets to be larger than normal for '*' glob/wildcard searches
-        'qMaxSetWords' : 5000
+        'likepAllmatch': true,  // match every word or partial word
+        'qMaxWords'    : 5000,  // allow query and sets to be larger than normal for '*' wildcard searches
+        'qMaxSetWords' : 5000   // see https://rampart.dev/docs/sql-set.html#qmaxsetwords 
+                                // and https://rampart.dev/docs/sql-set.html#qmaxwords .
     });
     
     // perform a text search on the words or partial words we have, and return a list of best matching locations
-    res = sql.exec("SELECT " +
-        "place_name +', ' + admin_name1 + ', ' + postal_code + ', ' + country_code value, "  +
-        "id, latitude, longitude, postal_code zip "+
-        "FROM geonames WHERE " +
-        "place_name\\postal_code\\admin_name1\\admin_code1\\country_code\\admin_name2\\admin_code2\\admin_name3\\admin_code3 "+
-        "LIKEP ?",
+    res = sql.exec(`SELECT 
+        place_name +', ' + admin_name1 + ', ' + postal_code + ', ' + country_code value,
+        id, latitude, longitude, postal_code zip
+        FROM geonames WHERE
+        place_name\\postal_code\\admin_name1\\admin_code1\\country_code\\admin_name2\\admin_code2\\admin_name3\\admin_code3
+        LIKEP ?;`,
         [q] 
     );
     return {json: { "suggestions": res.rows}};
