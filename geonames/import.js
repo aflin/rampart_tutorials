@@ -2,7 +2,7 @@ var Sql = require("rampart-sql");
 
 // use process.scriptPath to make sure we have the
 // correct path if running from another working directory
-var sql = new Sql.init(process.scriptPath + "/geonames_db", true);
+var sql = new Sql.init(process.scriptPath + "/web_server/data/geonames_db", true);
 
 // cuz no one likes writing out 'rampart.utils.printf()'
 rampart.globalize(rampart.utils);
@@ -118,11 +118,22 @@ function make_text_index() {
 }
 
 create_table();
+
+/* use a manual lock to speed things up.
+   Normally Texis locks for each insert.
+   However since this script is the only
+   process using the "geonames" table,
+   we can dispense with the extra work.
+*/
+sql.exec("lock tables geonames write;");
+
 import_data();
 make_geocode();
 make_geocode_index();
 make_id_index();
 make_text_index();
+
+sql.exec("unlock tables;");
 
 printf("All Done\n");
 
