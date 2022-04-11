@@ -73,42 +73,34 @@ sql.set({ "qminwordlen":1 });
 */
 var htmltop_format=sprintf('%w',
 `<!DOCTYPE HTML>
-    <html><head><meta charset="utf-8">
-    <style>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+      <style>
         body {font-family: arial,sans-serif;}
-        td {position:relative;}
-        #showrm {position:relative;}
-        .itemwrap{ width: calc( 100%% - 70px); position: relative;display: inline-block;}
-        .imgwrap {width:100%%;float: left; display:inline-block;position:relative;padding-top:5px;}
-        .abs { margin-right:5px;white-space: normal;}
         .urlsp {color:#006621;max-width:100%%;overflow: hidden;text-overflow: ellipsis;white-space:nowrap;display:inline-block;font-size:.90em;}
         .urla {text-decoration: none;font-size:16px;overflow: hidden;text-overflow: ellipsis;white-space:nowrap;display:inline-block; width: 100%%; }
-        .res {margin-top: 80px;}
-        .resi {min-height:20px;position:relative;clear:both;padding-top: 15px;}
-        .nw { white-space:nowrap;}
-        .ico { float:left;margin-right:5px}
-    </style>
-    </head><body>
-    <div id="lc" style="background-color: white; position: fixed; left:0px; top:20px; min-height: 300px; overflow-x: hidden; padding-right: 20px; padding-left: 20px; box-sizing: border-box; width: 200px;">
-     <div style="width:180px;height:128px;margin-bottom:15px">
-      【Ｒａｍｐａｒｔ】</div>
-    </div>
-    <div id="main" style="padding-bottom:30px;background-color: white; position: absolute; left:200px; top:0px; min-height: 300px; overflow-x: hidden; padding-right: 20px; padding-left: 30px; box-sizing: border-box; width: 600px;">
-      <form id="mf" action="/apps/pi_news/search.html">
-        <div style="width:100%%">
-          <span style="white-space:nowrap;display:block;width:500px;height:39px;position:fixed;background-color: white;z-index:10;border-bottom: lightGray 1px solid; padding-top:15px;padding-bottom:15px">
-            <table style="background-color: white; width:100%%">
-              <tr>
-                <td style="position:relative">
-                  <input autocomplete="off" type="text" id="fq" name="q" value="%H" placeholder="Search" style="box-sizing:border-box;min-width:150px;width:100%%;height:30px;font:normal 18px arial,sans-serif;padding: 1px 3px;border: 2px solid #ccc;">
-                  <input type=submit id="search" style="height:22px;position: absolute; right: 0px;margin: 4px;" value="Search">
-                </td>
-              </tr>
-            </table>
-          </span>
-        </div>
-      </form>
-      <div class="res">`
+        .res {margin-top: 80px !important;}
+        .img-cover{object-fit: cover; aspect-ratio:5/3}
+      </style>
+    </head>
+    <body>
+    <nav style="z-index:1" class="navbar position-fixed top-0 w-100 navbar-expand-lg navbar-light bg-light">
+      <div class="container-fluid">
+        <a class="navbar-brand m-auto p-2" href="#">
+          【Ｒａｍｐａｒｔ : Ｐｉ Ｎｅｗｓ】
+        </a>
+        <form style="width:100%%" id="mf" action="/apps/pi_news/search.html">
+          <div class="input-group mb-2">
+            <input autocomplete="off" type="text" id="fq" name="q" value="%H" placeholder="Search" class="form-control">
+            <button class="btn btn-outline-secondary" type="submit">Search</button>
+          </div>
+        </form>
+      </div>
+    </nav>
+`
 );
 
 
@@ -122,7 +114,7 @@ function search(req) {
 
     var icount=0;  //estimated total number of results, set below
     var endhtml;   // closing tags, set below
-    var nres=10;   // number of results per page
+    var nres=12;   // number of results per page
 
     // add the htmltop text to the server's output buffer.
     // See: https://rampart.dev/docs/rampart-server.html#req-printf
@@ -131,81 +123,97 @@ function search(req) {
 
     if (!skip)skip=0;
 
-    
+    var sqlStatement;
     // if there is a query, search for it and format the results.
-    // if not, just send the endhtml.
+    // if not, just send the latest articles.
+
     if(req.query.q) {
-        // by default, only the first 100 rows are returned for any likep search.
-        // if we are skipping past that, we need to raise the likeprows setting.
-        if(skip + nres > 100 )
-            sql.set({likeprows:skip + nres});
-        else
-            sql.set({likeprows:100}); //reset to default in case previously set
-        // sql.exec(statement, params, settings, callback);
-        sql.exec(
-            /* The SQL statement:
-           
-               %mbH in stringformat() means highlight with bold and html escape. 
-               See: https://rampart.dev/docs/rampart-sql.html#metamorph-hit-mark-up
-                    https://rampart.dev/docs/sql-server-funcs.html#stringformat
+        /* The SQL statement:
+       
+           %mbH in stringformat() means highlight with bold and html escape. 
+           See: https://rampart.dev/docs/rampart-sql.html#metamorph-hit-mark-up
+                https://rampart.dev/docs/sql-server-funcs.html#stringformat
 
-               "@0 " is added to the abstract query to allow partial matches to be
-               highlighted (i.e.  if a two word query, but only one word is in the
-               abstract).  
-               See https://docs.thunderstone.com/site/texisman/specifying_no_intersections_or.html
+           "@0 " is added to the abstract query to allow partial matches to be
+           highlighted (i.e.  if a two word query, but only one word is in the
+           abstract).  
+           See https://docs.thunderstone.com/site/texisman/specifying_no_intersections_or.html
 
-               abstract(text[, maxsize[, style[, query]]]) will create an abstract:  
-                  - text is the table field from which to create an abstract.
-                  - 0 (or <0) means use the default maximum size of 230 characters.
-                  - 'querymultiple' is a style which will break up the abstract into multiple sections if necessary
-                  - '?' is replaced with the JavaScript variable 'q'
-            */
-            "select url, img_url, title, stringformat('%mbH','@0 '+?query,abstract(text, 0,'querymultiple',?query)) Ab from pipages where text likep ?query",
-
-            // the parameters for each '?query' in the above statement
-            {query: q},
-
-            // options
-            {maxRows:nres,skipRows:skip,includeCounts:true},
-
-            // callback is executed once per retrieved row.
-            function(res,i,cols,info) {
-                /* res = {url: www, img_url:xxx, title:"yyy", Ab:"zzz"}
-                 * i = current row, beginning at skip, ending at or before skip + nres
-                 * cols = ["url", "img_url", "title", "Ab"] - the columns returned from the SQL statement
-                 * includeCounts sets info to an object detailing the number of possible matches to a "likep" query. */
-
-                //the first row
-                if(i==skip) {
-                    icount=parseInt(info.indexCount);
-                    req.printf('<div class="info">Results %d-%d of about %d</div>',skip+1,(skip+nres>icount)?icount:skip+nres,icount);
-                }
-
-                // format each row and add to the HTML in the server buffer to be sent to client
-                req.printf('<div class="resi" style="padding-top: 15px;">'+
-                                '<span class="imgwrap">'+
-                                '<span class="itemwrap">'+
-                                    '<span class="abs nw">'+
-                                      '<a class="urla tar" target="_blank" href="%s">%s</a>'+
-                                    '</span>'+
-                                    '<span class="abs urlsp snip">%s</span>'+
-                                    '<br><span class="abs snip">'+
-                                      '<img class="ico" src = "%s" style="width:100px">' +
-                                    '%s</span>'+
-                              '</span></span></div>',
-                res.url, res.title, res.url, res.img_url, res.Ab); 
-            }
-        );
+           abstract(text[, maxsize[, style[, query]]]) will create an abstract:  
+              - text is the table field from which to create an abstract.
+              - 0 (or <0) means use the default maximum size of 230 characters.
+              - 'querymultiple' is a style which will break up the abstract into multiple sections if necessary
+              - '?' is replaced with the JavaScript variable 'q'
+        */
+        sqlStatement = "select url, img_url, title, stringformat('%mbH','@0 '+?query,abstract(text, 0,'querymultiple',?query)) Ab from pipages where text likep ?query";
+    } else {
+        /* if no query, get latest articles */
+        sqlStatement = "select url, img_url, title, abstract(text) Ab from pipages order by server_date DESC";
     }
+
+    // by default, only the first 100 rows are returned for any likep search.
+    // if we are skipping past that, we need to raise the likeprows setting.
+    if(skip + nres > 100 )
+        sql.set({likeprows:skip + nres});
+    else
+        sql.set({likeprows:100}); //reset to default in case previously set
+    // sql.exec(statement, params, settings, callback);
+    sql.exec(
+        sqlStatement,
+        // the parameters for each '?query' in the above statement
+        {query: q},
+
+        // options
+        {maxRows:nres,skipRows:skip,includeCounts:true},
+
+        // callback is executed once per retrieved row.
+        function(res,i,cols,info) {
+            /* res = {url: www, img_url:xxx, title:"yyy", Ab:"zzz"}
+             * i = current row, beginning at skip, ending at or before skip + nres
+             * cols = ["url", "img_url", "title", "Ab"] - the columns returned from the SQL statement
+             * includeCounts sets info to an object detailing the number of possible matches to a "likep" query. */
+
+            // before the first row
+            if(i==skip) {
+                icount=parseInt(info.indexCount);
+                req.printf('<div class="res m-3">');
+
+                if(req.query.q)
+                    req.printf('<div class="m-5 mb-0">Results %d-%d of about %d</div>',
+                        skip+1,(skip+nres>icount)?icount:skip+nres,icount
+                    );
+                else
+                    req.printf('<div class="m-5 mb-0">Latest Articles</div>');
+
+                req.printf('<div class="row row-cols-md-3 row-cols-sm-2 row-cols-1 g-4 m-3 mt-0">');
+            }
+
+            req.printf('<div class="col"><div class="card">'+
+                           '<a target="_blank" href="%s">'+
+                             '<img class="card-img-top img-cover" src = "%s">' +
+                           '</a>' +
+                           '<div class="card-body">'+
+                             '<a class="urla tar" target="_blank" href="%s">%s</a>'+
+                              '<span class="urlsp">%s</span>'+
+                              '<p class="card-text">%s</p>'+
+                           '</div>'+
+                        '</div></div>',
+            res.url, res.img_url, res.url, res.title, res.url, res.Ab); 
+        }
+    );
 
     // check if there are more rows.  If so, print a 'next' link.
     if (icount > nres+skip) {
         skip+=nres
         // %U is for url encoding.  See https://rampart.dev/docs/rampart-utils.html#printf
-        endhtml=sprintf('</div><br><div style="text-align:right;padding-top: 12px;width: 450px;clear: both;"><a href="/apps/pi_news/search.html?q=%U&skip=%d">Next %d</a></div></body></html>',req.query.q,skip,nres);
-    } else {
-        endhtml='</div></div></body></html>';
+        req.printf('</div><div class="m-3 mt-0">' +
+                      '<a class="m-3" href="/apps/pi_news/search.html?q=%U&skip=%d">Next %d</a>' +
+                   '<div class="m-3"> </div></div>',
+            req.query.q,skip, (nres > icount - skip ? icount - skip: nres)
+        );
     }
+    endhtml='</div></div></body></html>';
+
 
     // send the closing html and set the  mime-type to text/html
     // This is appended to everything already sent using req.printf()
