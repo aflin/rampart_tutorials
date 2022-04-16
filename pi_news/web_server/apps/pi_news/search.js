@@ -134,18 +134,13 @@ function search(req) {
            See: https://rampart.dev/docs/rampart-sql.html#metamorph-hit-mark-up
                 https://rampart.dev/docs/sql-server-funcs.html#stringformat
 
-           "@0 " is added to the abstract query to allow partial matches to be
-           highlighted (i.e.  if a two word query, but only one word is in the
-           abstract).  
-           See https://docs.thunderstone.com/site/texisman/specifying_no_intersections_or.html
-
            abstract(text[, maxsize[, style[, query]]]) will create an abstract:  
               - text is the table field from which to create an abstract.
               - 0 (or <0) means use the default maximum size of 230 characters.
               - 'querymultiple' is a style which will break up the abstract into multiple sections if necessary
               - '?' is replaced with the JavaScript variable 'q'
         */
-        sqlStatement = "select url, img_url, title, stringformat('%mbH','@0 '+?query,abstract(text, 0,'querymultiple',?query)) Ab from pipages where text likep ?query";
+        sqlStatement = "select url, img_url, title, stringformat('%mbH',?query,abstract(text, 0,'querymultiple',?query)) Ab from pipages where text likep ?query";
     } else {
         /* if no query, get latest articles */
         sqlStatement = "select url, img_url, title, abstract(text) Ab from pipages order by server_date DESC";
