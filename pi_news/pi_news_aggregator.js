@@ -11,6 +11,7 @@ var dbdir  = process.scriptPath + "/web_server/data/pi_news"
 
 var sql = new Sql.init(dbdir, true);
 
+// The date format we are expecting from http servers
 var dateFmt = "%a, %d %b %Y %H:%M:%S GMT";
 
 var crawlDelay = 10;  // go slow - delay in seconds between fetches from same site.
@@ -21,8 +22,8 @@ var schema = "status smallint, fetch_count smallint, server_date date, fetch_dat
              "site varchar(8), url varchar(64), img_url varchar(64), title varchar(64), " +
              "text varchar(1024)";
 
-// running in two stages - first gets all articles from several pages
-//                       - second gets latest articles from main page
+// running in two stages - first gets all articles from several index pages
+//                       - second gets latest articles from main index page
 // First stage is done by running with command line argument '--first-run'
 var firstRun = false;
 if ( process.argv[2] == '--first-run' )
@@ -39,7 +40,7 @@ if ( process.argv[2] == '--first-run' )
     contentRemoveClass - the CSS class of elements on the content pages inside contentClass that should be removed
 */
 
-sites = {
+var sites = {
     "hackaday":
     {
         name: "hackaday",
@@ -104,14 +105,15 @@ function fetch(url) {
         printf("fetching %s\r", rurl);
         fflush(stdout);
 
-        // body is a buffer.  robots.isAllowed takes a buffer, so we can dispense with text.
-        res = curl.fetch(rurl, {"user-agent": userAgent, returnText: false});
+        // body is a buffer.  robots.isAllowed also takes a buffer, so we can dispense with text.
+        res = curl.fetch(rurl, {"user-agent": userAgent, returnText: false, location:true});
         printf("%d    - %s\n", res.status, rurl);
         if(res.status==200) {
             robotstxt[origin]=res.body;
-        } else if (res.status == 404) {
+        } else if (res.status > 399) {
             robotstxt[origin]=-1;
         } else {
+            // there are other possibilities not covered here
             return {status: -1, statusText: statTexts[-1]};
         }
     }
@@ -123,7 +125,7 @@ function fetch(url) {
 
     printf("fetching %s\r", url);
     fflush(stdout);
-    res = curl.fetch (url, {"user-agent": userAgent, returnText: false});
+    res = curl.fetch (url, {"user-agent": userAgent, returnText: false, location:true});
     printf("%d    - %s\n", res.status, url);
 
     return res;
@@ -220,6 +222,7 @@ function create_table() {
     sql.exec('create unique index pipages_url_ux on pipages(url);');
 }
 
+// update a row of data in our table
 function update_row(data) {
     var keys = Object.keys(data);
 
@@ -265,6 +268,7 @@ var empty_params = {
     text:""
 }
 
+// insert a new row into our table
 function insert_row(data) {
     var dfilled = {};                     // start with empty object
     Object.assign(dfilled, empty_params); // add default empty params 
@@ -423,7 +427,7 @@ function procpage(site, dbrow, fetch_res) {
 }
 
 /*
-    Regular indexes are updated on each insert/update
+    Regular indexes are updated on each insert/update.
     Text indexes, however, need to be manually updated.
       -  When a new row is inserted, it still is available for search,
          but that search is a linear scan of the document, so it is slower.
@@ -487,8 +491,8 @@ function fetch_article(sitename) {
     }
 }
 
+// get article pages asynchronously using setInterval
 function fetch_all_articles(){
-    // get article pages asynchronously using setInterval
     for (var i = 0; i < sitenames.length; i++) {
         var site = sites[sitenames[i]];
 
