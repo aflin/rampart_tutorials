@@ -127,6 +127,7 @@ function fetch(url) {
     fflush(stdout);
     res = curl.fetch (url, {"user-agent": userAgent, returnText: false, location:true});
     printf("%d    - %s\n", res.status, url);
+    if(res.status > 499) res.status *= -1;  //return negative on server error, so we will retry
 
     return res;
 }
