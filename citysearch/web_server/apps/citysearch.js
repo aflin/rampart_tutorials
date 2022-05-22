@@ -95,6 +95,7 @@ function import_data(){
             {
                 tableName:       'cities_tmp',
                 singleQuoteNest: false,
+                hasHeaderRow:    true,
                 delimiter:       ';',
                 normalize:       false,
                 callbackStep:    step, //callback run every 100th row
@@ -273,27 +274,34 @@ if(useKilometers)
 
 function htmlpage(req) {
     var id = req.params.id, lat, lon;
-//req.printf('<!-- %s -->\n',id);
+
+    // check if we already have a place id.
     if(id){
         id_res= sql.one("SELECT place, latitude, longitude " + 
             "FROM cities WHERE id=?;",
             [req.params.id]
         );
+        // yes, then set lat,lon vars
         if(id_res) {
             lon=id_res.longitude;
             lat=id_res.latitude;
         }
     } else {
-        req.printf(pageTopFmt,'');
-        return({html:pageBottom});
+        // no, just print the blank search form
+        req.printf(pageTopFmt,'');  // add top of page to return buffer without a query.
+        return({html:pageBottom});  // add bottom of page, return with 'content-type:text/html'
     } 
 
+    // what to do if the query_string id is not found in the db
     if(!lon || !lat) {
         req.printf(pageTopFmt,'');
         req.printf('No entry for id "%s".', id);
         return({html:pageBottom});
     }
 
+    /* here we select rows based on their distance from the place specified by 'id',
+       calculate the distance and direction between id and the selected city,
+       then sort by the distance from 'id' (field 6 in our sql statement) */
     res = sql.exec(`SELECT
         place, id, latitude, longitude, population,
         DISTLATLON(?lat, ?lon, latitude, longitude) dist,
@@ -302,15 +310,18 @@ function htmlpage(req) {
         ORDER BY 6 ASC;`,
         {lat:lat, lon:lon},
         {maxRows: 31}, // first row is same city
-        function(res, i) {
+        function(res, i) { // foreach city retrieved:
             if(!i) {
+                // this is our 'id' city, as it is closest to itself.
                 req.printf(pageTopFmt,res.place);
                 req.printf('<h3 style="margin-bottom:0px">%s</h3><ul style="margin-top:0px">',res.place);
             } else {
+                // all other nearby cities we will print the direction and distance:
                 req.printf('<a href="?id=%s">%s</a><br><ul>' +
                     '<li>Direction:  %.2f %s to the %s</li>',
                     res.id, res.place, res.dist * distconv, distvar, res.heading);
             }
+            // some useful information to go along with the city name
             req.printf("<li>Population: %s</li>" +
                 '<li>Location: <a target="_blank" href="https://maps.google.com/maps?z=11&q=%U&ll=%f,%f">' +
                 'google maps (%.4f,%.4f)</a></li></ul>',
