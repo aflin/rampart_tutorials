@@ -370,14 +370,14 @@ function autocomp(req) {
     if(q.charAt(q.length-1) != ' ')
         q += '*';
     
-    // perform a like3 (no rank) sorted by pop text search, and return a list of best matching locations
+    // perform a like3 (no rank) pre-sorted by pop text search, and return a list of best matching locations
     res = sql.exec("SELECT place value, id, latitude, longitude, population FROM cities WHERE "+
-                    "place LIKE3 ? order by population DESC;", [q] );
+                    "place LIKE3 ? ;", [q] );
 
     //if no results, try again using alt_names
     if(res.rowCount == 0) {
         res = sql.exec("SELECT place value, alt_names,id, latitude, longitude, population FROM cities WHERE " +
-                        "alt_names LIKE3 ? order by population DESC;", [q] );
+                        "alt_names LIKE3 ? ;", [q] );
         // add alt name to "value" for type ahead display
         for (var i=0; i<res.rows.length;i++) {
             var row = res.rows[i];
