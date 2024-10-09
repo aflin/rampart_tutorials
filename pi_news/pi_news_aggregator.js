@@ -51,6 +51,9 @@ var sites = {
         contentImgClass: "entry-featured-image",
         contentClass: 'post'
     },
+    /* raspberripi.com turned on anti-bot protections that 
+       make accessing pages beyond the scope of this demo.
+       Using raspberrypi.org/blog instead.
     "raspberrypi":
     {
         name: "raspberrypi",
@@ -62,6 +65,22 @@ var sites = {
         contentClass: "c-blog-post-content",
         contentRemoveClass: ["c-blog-post-content__footer"]
     },
+    */
+    "raspberrypi":
+    {
+        name: "raspberrypi",
+        url: "https://www.raspberrypi.org/blog/",
+        urlNextFmt: "https://www.raspberrypi.org/blog/page/%d/",
+        initialPages: 5,
+        entryClass: "c-blog-post-card__link",
+        entryImgClass: "c-blog-post-card__image",
+        contentClass: "c-blog-post-content",
+        contentRemoveClass: ["c-blog-post-content__footer"]
+    },
+    
+
+    /* makeuseof added "Disallow: /search/" to their robots.txt,
+       therefore we will no longer use this one:
     "makeuseof":
     {
         name: "makeuseof",
@@ -71,6 +90,18 @@ var sites = {
         entryClass: "bc-title-link",
         entryImgClass: "bc-img",
         contentClass: "article",
+        contentRemoveClass: ["sidebar", "next-btn", "sharing", "letter-from"]
+    }
+    */
+    "makeuseof":
+    {
+        name: "makeuseof",
+        url: "https://www.makeuseof.com/tag/raspberry-pi/",
+        urlNextFmt: "https://www.makeuseof.com/tag/raspberry-pi/%d/",
+        initialPages: 3,
+        entryClass: "display-card-title",
+        entryImgClass: "bc-img",
+        contentClass: "article-body",
         contentRemoveClass: ["sidebar", "next-btn", "sharing", "letter-from"]
     }
 }
@@ -135,7 +166,6 @@ function fetch(url) {
 // process the index page holding links to articles
 function procIndex(site, docBody) {
     var doc = html.newDocument(docBody);
-
     var entries = doc.findClass(site.entryClass);
 
     var images;
@@ -144,7 +174,6 @@ function procIndex(site, docBody) {
     }
 
     var insertRows = [];
-
     for (var i=0; i<entries.length; i++) {
         var row={site: site.name};
         var entry = entries.eq(i);
@@ -275,17 +304,21 @@ function insert_row(data) {
     Object.assign(dfilled, empty_params); // add default empty params 
     Object.assign(dfilled, data);         // overwrite params with what we have
 
-    var res = sql.exec("insert into pipages values " +
+    var res = sql.query("insert into pipages values " +
         "(?status, ?fetch_count, ?server_date, ?fetch_date, ?site, ?url, ?img_url, ?title, ?text);",
         dfilled
     );    
 
     // if duplicate, sql.errMsg will be set with "duplicate value" message and res.rowCount == 0
     // Checking res.rowCount first is likely faster
-    if (!res.rowCount && sql.errMsg.includes("Trying to insert duplicate value") ) {
-        res.isDup=true;
-        // remove sql.errMsg
-        sql.errMsg = '';
+    if (!res) {
+        if(sql.errMsg.includes("Trying to insert duplicate value") )
+            return {isDup:true};
+        else
+        {
+            printf("error inserting %s: %s\n", dfilled.url, sql.errMsg);
+            return {error:true}
+        }
     }
     return res;
 }
@@ -315,10 +348,12 @@ function check_new_articles() {
             printf("checking     %s - \r", urllist[j].url)
             fflush(stdout);
             var sqlres = insert_row(urllist[j]);
-            if(sqlres.isDup)
-                printf("exists:      %s\n", urllist[j].url);
-            else
-                printf("NEW ARTICLE: %s\n", urllist[j].url);
+            if(sqlres) {
+                if(sqlres.isDup)
+                    printf("exists:      %s\n", urllist[j].url);
+                else
+                    printf("NEW ARTICLE: %s\n", urllist[j].url);
+            }
         }
     }
 }
@@ -404,7 +439,7 @@ function procpage(site, dbrow, fetch_res) {
         }
     }
 
-    // makeuseof has an easier to grab image in the article
+    // hackaday has an easier to grab image in the article
     if(site.contentImgClass) {
         image=doc.findClass( site.contentImgClass );
         if(image.hasTag("img")[0])
@@ -435,17 +470,17 @@ function procpage(site, dbrow, fetch_res) {
       -  A text index can be updated with either:
           1) sql.exec("alter index pipages_text_ftx OPTIMIZE");
               or
-          2) issuing the same command that created the index as in make_index() below.
+          2) issuing the same command that created the index like in make_index() below.
          Here we will issue the same command when creating and updating for simplicity.
 */
 
 function make_index(){
     // we want to match "Check out the new pi 4." if we search for "pi 4"
-    // so we add an expression for [\s\,]\d+[\s,\.] (in PERLRE), but only matching the number(s)
+    // so we add an expression for digits (like \d+ in PERLRE).
     sql.exec(
         "create fulltext index pipages_text_ftx on pipages(text) " +
         "WITH WORDEXPRESSIONS "+
-        "('[\\alnum\\x80-\\xFF]{2,99}', '[\\space\\,]\\P=\\digit+\\F[\\space,\\.]=') "+
+        "('[\\alnum\\x80-\\xFF]{2,99}', '\\digit+') "+
         "INDEXMETER 'on'");
 
 }
@@ -501,32 +536,7 @@ function fetch_all_articles(){
                     [sitenames[i]] );
 
         if (res) { // only if we have some sites, otherwise we'd waste crawlDelay seconds just to exit
-
-            // this complicated mess is to make sure our *sitenames[i].name*
-            // is scoped to the setInterval callback and stays the same 
-            // even as the *site* variable changes in subsequent *for* loops.
-
-            // if you are unfamiliar with this technique and immediately invoked functions - see:
-            // https://www.google.com/search?q=iife+settimeout
-
-            // scope sitename in an IIFE
-            (function(sn) {
-                iId[sn] = setInterval(
-                    function() { fetch_article(sn);}, 
-                    crawlDelay * 1000
-                );
-            })(site.name);
-
-            /* or use IIFE to return a function with sitename scoped. Result is the same.
-            iId[site.name] = setInterval(
-                (function(sn) { 
-                    return function() {
-                        fetch_article(sn);
-                    }
-                })(site.name),
-                crawlDelay * 1000
-            );
-            */
+            iId[site.name] = setInterval(fetch_article, crawlDelay * 1000, site.name);
         }
     }
 

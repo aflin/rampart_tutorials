@@ -58,7 +58,7 @@ NOTE ALSO:
 // in the scraping script so that single digits will be indexed.
 // In another context, this might be counter productive as it polutes the index, but
 // here we have a small table and a greater need to match single digits. 
-sql.set({ "qminwordlen":1 });
+sql.set({ "qminwordlen":1, alpostproc:true });
 
 /* 
  the top section of html only needs to be set once as it remains the same
